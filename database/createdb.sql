@@ -1,0 +1,104 @@
+USE Smart_Home_System;
+
+CREATE TABLE User (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+	Username NVARCHAR(30) UNIQUE,
+	Pass NVARCHAR(255) NOT NULL,
+    Fullname NVARCHAR(50) NOT NULL, 
+    Dob DATE, 
+    Email NVARCHAR(50), 
+    Tel CHAR(10)
+);
+CREATE TABLE Home (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    Address VARCHAR(100),
+    HName VARCHAR(50),
+    APIKey VARCHAR(100),
+    UserID INT,
+    FOREIGN KEY (UserID) REFERENCES User(ID)
+);
+
+CREATE TABLE Room (
+    RoomID INT PRIMARY KEY AUTO_INCREMENT,
+    HomeID INT,
+    Name VARCHAR(50),
+    FOREIGN KEY (HomeID) REFERENCES Home(ID)
+);
+
+CREATE TABLE Device (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    DType VARCHAR(50),
+    DName NVARCHAR(50),
+    APIKey VARCHAR(100),
+    RoomID INT,
+    HomeID INT,
+    FOREIGN KEY (RoomID) REFERENCES Room(RoomID),
+    FOREIGN KEY (HomeID) REFERENCES Home(ID)
+);
+
+CREATE TABLE Sensors (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    SName VARCHAR(50),
+    SType VARCHAR(50),
+    DataEdge VARCHAR(100),
+    APIKey VARCHAR(100),
+    HomeID INT,
+    RoomID INT,
+    FOREIGN KEY (HomeID) REFERENCES Home(ID),
+    FOREIGN KEY (RoomID) REFERENCES Room(RoomID)
+);
+
+CREATE TABLE SensorData (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    STime DATETIME,
+    DataType VARCHAR(50),
+    NumData FLOAT,
+    TextData NVARCHAR(50),
+    SensorID INT,
+    FOREIGN KEY (SensorID) REFERENCES Sensors(ID)
+);
+
+CREATE TABLE Notification (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    Message TEXT,
+    NTime DATETIME,
+    UserID INT,
+    SensorID INT,
+    NType VARCHAR(50),
+    isRead BOOLEAN,
+    FOREIGN KEY (UserID) REFERENCES User(ID),
+    FOREIGN KEY (SensorID) REFERENCES Sensors(ID)
+);
+
+CREATE TABLE ActivityLog (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    AMode VARCHAR(50),
+    ADescription TEXT,
+    ATime DATETIME,
+    DeviceID INT,
+    FOREIGN KEY (DeviceID) REFERENCES Device(ID)
+);
+
+CREATE TABLE Mode (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    MType NVARCHAR(50),
+    MTime DATETIME,
+    UserID INT,
+    FOREIGN KEY (UserID) REFERENCES User(ID)
+);
+
+CREATE TABLE ScheMode (
+    ModeID INT  PRIMARY KEY,
+    SDescription NVARCHAR(100),
+    FOREIGN KEY (ModeID) REFERENCES Mode(ID)
+);
+
+CREATE TABLE ScheDetail (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    StartTime DATETIME,
+    EndTime DATETIME,
+    ModeID INT,
+    DeviceID INT,
+    FOREIGN KEY (ModeID) REFERENCES Mode(ID),
+    FOREIGN KEY (DeviceID) REFERENCES Device(ID)
+);
