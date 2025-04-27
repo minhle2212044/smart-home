@@ -20,7 +20,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", isAuth, userRoutes);
 app.use("/api/topic", isAuth, mqttRoutes);
-//app.use("/api/device", deviceRoutes);
+app.use("/api/device", deviceRoutes);
 app.use("/api/sensor", isAuth, sensorRoutes);
 
 app.get("/", (req, res) => {
