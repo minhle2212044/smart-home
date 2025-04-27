@@ -3,14 +3,19 @@ const db = require("../../config/db");
 exports.getUserById = async (req, res) => {
     const id = Number(req.params.id);
     try {
-        sql = "SELECT * FROM user WHERE ID = ?";
-        db.query(sql, id, function (err, results) {
-            if (!results) {
-                return res.status(200).json({"message": "User not found"});
-            } else {
-                return res.status(401).json(results[0]);
-            };
+        const sql = "SELECT * FROM user WHERE ID = ?";
+        const results = await new Promise((resolve, reject) => {
+            db.query(sql, [id], (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+            });
         });
+
+        if (!results || results.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json(results[0]);
     } catch (err) {
       return res.status(400).json({ message: err.message || err });
     }

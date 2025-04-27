@@ -1,10 +1,11 @@
 const db = require("../../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const mqttService = require('../service/mqttService');
 const SALT_ROUNDS = 10;
 
-const generateToken = (userID) => {
-    const token = jwt.sign({ id: userID }, process.env.ACCESS_TOKEN_SECRET, {
+const generateToken = (userID, username) => {
+    const token = jwt.sign({ id: userID, username: username}, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: process.env.ACCESS_TOKEN_LIFE,
     });
     return token;
@@ -34,10 +35,9 @@ exports.register = async (req, res) => {
                         console.error("Lỗi khi insert user:", err);
                         return res.status(500).json({ message: "Database insert error" });
                     }
-                    const token = generateToken(username);
+
                     return res.status(201).json({
                         message: "User created successfully",
-                        token,
                         user: {
                             Username: username,
                             Fullname: name,
@@ -58,36 +58,48 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
     try {
-        const {username, password} = req.body;
+      const { username, password } = req.body;
+  
+      if (!username || !password) {
+        return res.status(400).json({ message: "Missing username or password" });
+      }
+  
+      const [userResults] = await db.promise().query("SELECT * FROM user WHERE Username = ?", [username]);
+      if (userResults.length === 0) {
+        return res.status(401).json({ message: "User does not exist" });
+      }
+  
+      const user = userResults[0];
+      const userID = user.ID;
+  
+      const isValid = bcrypt.compareSync(password, user.Pass);
+      if (!isValid) {
+        return res.status(401).json({ message: "Wrong password" });
+      }
+  
+      const token = generateToken(userID, username);
+  
+      const [homes] = await db.promise().query("SELECT * FROM Home WHERE UserID = ? ORDER BY ID ASC LIMIT 1", [userID]);
+      if (homes.length > 0) {
+        const homeId = homes[0].ID;
+        const apiKey = homes[0].APIKey;
 
-        if (!username || !password) {
-            return res.status(400).json({ message: "Missing username or password"});
-        }
-
-        sql = "SELECT * FROM user WHERE Username = ?";
-        db.query(sql, username, function (err, results) {
-            if (results.length > 0) {
-                const user = results[0];
-                let userID = user.ID;
-                let isValid = bcrypt.compareSync(password, user.Pass);
-                if (!isValid) {
-                    return res.status(401).json("Wrong password");
-                }
-                const token = generateToken(userID);
-                return res.status(200).json({
-                    token,
-                    user
-                });
-            } else {
-                return res.status(401).json("User does not exist");
-            };
+        await mqttService.connectToMqtt(apiKey);
+        await mqttService.switchTopicsForUser(userID, homeId);
+        
+        return res.status(200).json({
+          token,
+          user, 
+          homeId
         });
-
+      }
+  
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: "Internal server error" });
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
     }
-};
+  };
+  
 
 exports.verifyToken = (req, res) => {
     const token = req.headers.authorization?.split(" ")[1];
