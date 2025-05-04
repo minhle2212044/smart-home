@@ -1,5 +1,6 @@
 const db = require("../../config/db");
-
+const bcrypt = require("bcrypt");
+const SALT_ROUNDS = 10;
 exports.getUserById = async (req, res) => {
     const id = Number(req.params.id);
     try {
@@ -63,5 +64,50 @@ exports.updateUser = async (req, res) => {
     } catch (err) {
         console.log("Lỗi server:", err);
         return res.status(400).json({ message: err.message || err });
+    }
+};
+
+exports.updatePassword = async (req, res) => {
+    const id = Number(req.params.id);
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+        return res.status(400).json({ message: "Thiếu thông tin mật khẩu." });
+    }
+
+    try {
+        const sql = "SELECT Pass FROM User WHERE ID = ?";
+        db.query(sql, [id], async (err, results) => {
+            if (err) {
+                console.error("Lỗi khi truy vấn:", err);
+                return res.status(500).json({ message: "Lỗi cơ sở dữ liệu." });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Không tìm thấy người dùng." });
+            }
+
+            const hashedOldPassword = results[0].Pass;
+
+            const isMatch = await bcrypt.compare(oldPassword, hashedOldPassword);
+            if (!isMatch) {
+                return res.status(401).json({ message: "Mật khẩu cũ không đúng." });
+            }
+
+            const hashedNewPassword = bcrypt.hashSync(newPassword, SALT_ROUNDS);
+
+            const sqlUpdate = "UPDATE User SET Pass = ? WHERE ID = ?";
+            db.query(sqlUpdate, [hashedNewPassword, id], (err2, result2) => {
+                if (err2) {
+                    console.error("Lỗi khi cập nhật:", err2);
+                    return res.status(500).json({ message: "Không thể cập nhật mật khẩu." });
+                }
+
+                return res.status(200).json({ message: "Cập nhật mật khẩu thành công." });
+            });
+        });
+    } catch (error) {
+        console.error("Lỗi server:", error);
+        return res.status(500).json({ message: "Lỗi máy chủ." });
     }
 };

@@ -11,41 +11,44 @@ async function handleIncomingMessage(topic, message) {
   try {
     console.log(`Received on ${topic}: ${message.toString()}`);
 
-    const rawData = message.toString();
-    let value = null;
-
-    if (!isNaN(rawData)) {
-      value = parseFloat(rawData);
-    } else {
-      value = rawData;
-    }
-
-    const sensorID = await getSensorIdByApiKey(topic);
-
-    if (!sensorID) {
-      console.error('SensorID not found for topic', topic);
+    const segments = topic.split('/');
+    if (segments.length < 3) {
+      console.error('Invalid topic format:', topic);
       return;
     }
 
-    const sensorData = {
-      STime: new Date(),
-      DataType: typeof value === 'number' ? 'Number' : 'String',
-      NumData: typeof value === 'number' ? value : null,
-      TextData: typeof value !== 'number' ? value : null,
-      SensorID: sensorID
-    };
+    const root = segments[1];
+    const type = segments[2];
+    const rawData = message.toString();
 
-    // Push vào queue cho FE
-    sensorDataQueue.push(sensorData);
+    let value = isNaN(rawData) ? rawData : parseFloat(rawData);
 
-    // Save thẳng vào database
-    await db.promise().query(
-      'INSERT INTO SensorData (STime, DataType, NumData, TextData, SensorID) VALUES (?, ?, ?, ?, ?)',
-      [sensorData.STime, sensorData.DataType, sensorData.NumData, sensorData.TextData, sensorData.SensorID]
-    );
+    if (root === 'sensors') {
+      const sensorID = await getSensorIdByType(type);
+      if (!sensorID) {
+        console.error('SensorID not found for type:', type);
+        return;
+      }
 
-    console.log(`✅ Saved sensor data for SensorID=${sensorID}`);
+      const sensorData = {
+        STime: new Date(),
+        DataType: typeof value === 'number' ? 'Number' : 'String',
+        NumData: typeof value === 'number' ? value : null,
+        TextData: typeof value !== 'number' ? value : null,
+        SensorID: sensorID
+      };
 
+      // Push vào queue cho FE
+      sensorDataQueue.push(sensorData);
+
+      // Save thẳng vào database
+      await db.promise().query(
+        'INSERT INTO SensorData (STime, DataType, NumData, TextData, SensorID) VALUES (?, ?, ?, ?, ?)',
+        [sensorData.STime, sensorData.DataType, sensorData.NumData, sensorData.TextData, sensorData.SensorID]
+      );
+
+      console.log(`Saved sensor data for SensorID=${sensorID}`);
+    }
   } catch (error) {
     console.error(`Error processing message: ${error.message}`);
   }
@@ -89,11 +92,11 @@ async function connectToMqtt(apiKey) {
   client = mqtt.connect(apiKey);
 
   client.on('connect', () => {
-    console.log('✅ Connected to MQTT broker');
+    console.log('Connected to MQTT broker');
   });
 
   client.on('error', (err) => {
-    console.error('❌ MQTT error:', err.message);
+    console.error('MQTT error:', err.message);
   });
 
   client.on('message', (topic, message) => {

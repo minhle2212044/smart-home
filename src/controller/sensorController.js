@@ -64,3 +64,40 @@ exports.getLatestSensorData = async (req, res) => {
       res.status(500).json({ message: "Internal server error" });
     }
   };
+
+  exports.addSensor = (req, res) => {
+    const { SName, SType, DataEdge, APIKey, HomeID, RoomID } = req.body;
+
+    const sql = `
+        INSERT INTO Sensors (SName, SType, DataEdge, APIKey, HomeID, RoomID)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `;
+    db.query(sql, [SName, SType, DataEdge, APIKey, HomeID, RoomID], (err, result) => {
+        if (err) return res.status(500).json({ message: "Thêm cảm biến thất bại", error: err });
+        res.status(201).json({ message: "Thêm cảm biến thành công", sensorID: result.insertId });
+    });
+};
+
+exports.updateSensor = (req, res) => {
+  const id = req.params.id;
+  const { SName, SType, DataEdge, APIKey, HomeID, RoomID } = req.body;
+
+  const sql = `
+      UPDATE Sensors SET SName = ?, SType = ?, DataEdge = ?, APIKey = ?, HomeID = ?, RoomID = ?
+      WHERE ID = ?
+  `;
+  db.query(sql, [SName, SType, DataEdge, APIKey, HomeID, RoomID, id], (err, result) => {
+      if (err) return res.status(500).json({ message: "Cập nhật cảm biến thất bại", error: err });
+      res.status(200).json({ message: "Cập nhật cảm biến thành công" });
+  });
+};
+
+exports.deleteSensor = (req, res) => {
+  const id = req.params.id;
+
+  const sql = "DELETE FROM Sensors WHERE ID = ?";
+  db.query(sql, [id], (err, result) => {
+      if (err) return res.status(500).json({ message: "Xóa cảm biến thất bại", error: err });
+      res.status(200).json({ message: "Xóa cảm biến thành công" });
+  });
+};
