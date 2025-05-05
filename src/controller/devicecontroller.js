@@ -280,12 +280,6 @@ exports.SetParameter = async (req, res) => {
       messageObj.brightness = para;
     } else if (type.includes('buzzer')) {
       messageObj.amplitude = para;
-    } else if (type.includes('door')) {
-      messageObj = {
-        action: 'set_password',
-        is_set_password: Boolean(para)
-      };
-      parameterToStore = Boolean(para).toString();
     } else {
       return res.status(400).json({ message: `Không hỗ trợ loại thiết bị: ${DType}` });
     }
@@ -479,5 +473,99 @@ exports.exportDeviceDataToExcel = async (req, res) => {
   } catch (error) {
     console.error("Error exporting device data to Excel:", error.message);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.setPassword = async (req, res) => {
+  try {
+    const { deviceID, password } = req.body;
+    if (!deviceID || !password) {
+      return res.status(400).json({ message: 'Thiếu deviceID hoặc password' });
+    }
+
+    const [[device]] = await db.promise().query(
+      'SELECT APIKey, DType FROM Device WHERE ID = ?', 
+      [deviceID]
+    );
+
+    if (!device) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+    const { APIKey, DType } = device;
+    const type = DType.toLowerCase();
+
+    if (!type.includes('door')) {
+      return res.status(400).json({ message: `Thiết bị không phải cửa (door): ${DType}` });
+    }
+
+    const messageObj = {
+      action: 'set_password',
+      is_set_password: true
+    };
+
+    const client = mqttService.getClient();
+    if (!client || !client.connected) {
+      return res.status(500).json({ message: 'MQTT client chưa kết nối' });
+    }
+
+    client.publish(APIKey, JSON.stringify(messageObj), async (err) => {
+      if (err) {
+        return res.status(500).json({ message: 'Gửi MQTT thất bại', error: err.message });
+      }
+
+      await db.promise().query(
+        'UPDATE Device SET Parameter = ? WHERE ID = ?',
+        [password.toString(), deviceID]
+      );
+
+      res.status(200).json({ message: 'Đặt mật khẩu thành công', sent: messageObj });
+    });
+
+  } catch (error) {
+    console.error('Lỗi setPassword:', error.message);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+exports.verifyPassword = async (req, res) => {
+  try {
+    const { deviceID, inputPassword } = req.body;
+    if (!deviceID || !inputPassword) {
+      return res.status(400).json({ message: 'Thiếu deviceID hoặc mật khẩu nhập vào' });
+    }
+
+    const [[device]] = await db.promise().query(
+      'SELECT APIKey, DType, Parameter FROM Device WHERE ID = ?',
+      [deviceID]
+    );
+
+    if (!device) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+    const { APIKey, DType, Parameter: storedPassword } = device;
+
+    if (!DType.toLowerCase().includes('door')) {
+      return res.status(400).json({ message: `Thiết bị không phải là cửa: ${DType}` });
+    }
+
+    if (inputPassword !== storedPassword) {
+      return res.status(401).json({ message: 'Mật khẩu sai' });
+    }
+
+    const client = mqttService.getClient();
+    if (!client || !client.connected) {
+      return res.status(500).json({ message: 'MQTT client chưa kết nối' });
+    }
+
+    const messageObj = {
+      action: 'manual_control',
+      status: true
+    };
+
+    client.publish(APIKey, JSON.stringify(messageObj), (err) => {
+      if (err) return res.status(500).json({ message: 'Gửi lệnh mở cửa thất bại', error: err.message });
+
+      res.status(200).json({ message: 'Mở cửa thủ công thành công', sent: messageObj });
+    });
+
+  } catch (error) {
+    console.error('Lỗi verifyPassword:', error.message);
+    res.status(500).json({ message: 'Lỗi server' });
   }
 };
