@@ -62,7 +62,6 @@ exports.updateUser = async (req, res) => {
             });
         });
     } catch (err) {
-        console.log("Lỗi server:", err);
         return res.status(400).json({ message: err.message || err });
     }
 };

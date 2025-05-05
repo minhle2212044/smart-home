@@ -5,6 +5,7 @@ const bodyParser = require("body-parser");
 const app = express();
 const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
+const swagger = require("./src/service/swagger");
 const db = require("./config/db");
 const authRoutes = require('./src/routes/authRoutes');
 const userRoutes = require('./src/routes/userRoutes');
@@ -19,6 +20,8 @@ app.use(bodyParser.urlencoded({ limit: "150mb", extended: true }));
 app.use(cors());
 app.use(express.json());
 
+const specs = swaggerJsdoc(swagger);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 app.use("/api/auth", authRoutes);
 app.use("/api/user", isAuth, userRoutes);
 app.use("/api/topic", isAuth, mqttRoutes);
