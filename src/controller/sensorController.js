@@ -1,5 +1,43 @@
 const db = require('../../config/db');
 
+exports.getSensorByID = async (req, res) => {
+  try {
+    const { sensorID } = req.body;
+
+    if (!sensorID) {
+      return res.status(400).json({ message: "Missing sensorID" });
+    }
+
+    const [sensorRows] = await db.promise().query(
+      `SELECT 
+         s.ID AS SensorID, 
+         s.SName, 
+         s.SType, 
+         s.DataEdge,
+         s.APIKey,
+         s.RoomID,
+         r.Name AS RoomName,
+         s.HomeID,
+         h.HName AS HomeName,
+         h.UserID
+       FROM Sensors s
+       LEFT JOIN Room r ON s.RoomID = r.RoomID
+       LEFT JOIN Home h ON s.HomeID = h.ID
+       WHERE s.ID = ?`,
+      [sensorID]
+    );
+
+    if (sensorRows.length === 0) {
+      return res.status(404).json({ message: "Sensor not found" });
+    }
+
+    res.status(200).json({ sensor: sensorRows[0] });
+  } catch (error) {
+    console.error('Error getting sensor info:', error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 exports.getSensorsByUser = async (req, res) => {
     try {
       const { userID, homeID } = req.query;
@@ -100,4 +138,79 @@ exports.deleteSensor = (req, res) => {
       if (err) return res.status(500).json({ message: "Xóa cảm biến thất bại", error: err });
       res.status(200).json({ message: "Xóa cảm biến thành công" });
   });
+};
+
+exports.getSensorDataHistory = async (req, res) => {
+  try {
+    let { sensorID, startDate, endDate, page = 1, limit = 10, sortOrder = 'asc' } = req.query;
+
+    if (!sensorID) {
+      return res.status(400).json({ message: "Missing sensorID" });
+    }
+
+    const sensorIDs = sensorID.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    if (sensorIDs.length === 0) {
+      return res.status(400).json({ message: "Invalid sensorID list" });
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const orderDirection = sortOrder.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+
+    let dateCondition = '';
+    const params = [];
+
+    if (startDate) {
+      dateCondition += ' AND STime >= ?';
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      dateCondition += ' AND STime <= ?';
+      params.push(endDate);
+    }
+
+    const sensorPlaceholders = sensorIDs.map(() => '?').join(',');
+
+    const [rows] = await db.promise().query(
+      `SELECT 
+         sd.ID, 
+         sd.SensorID,
+         sd.STime, 
+         sd.NumData,
+         sd.TextData,
+         sd.DataType,
+         s.SName,
+         s.SType,
+         r.Name AS RoomName
+       FROM SensorData sd
+       JOIN Sensors s ON sd.SensorID = s.ID
+       LEFT JOIN Room r ON s.RoomID = r.RoomID
+       WHERE sd.SensorID IN (${sensorPlaceholders}) ${dateCondition}
+       ORDER BY sd.STime ${orderDirection}
+       LIMIT ? OFFSET ?`,
+      [...sensorIDs, ...params, parseInt(limit), offset]
+    );
+
+    const [countRows] = await db.promise().query(
+      `SELECT COUNT(*) AS total 
+       FROM SensorData 
+       WHERE SensorID IN (${sensorPlaceholders}) ${dateCondition}`,
+      [...sensorIDs, ...params]
+    );
+
+    const total = countRows[0].total;
+    const totalPages = Math.ceil(total / limit);
+
+    res.status(200).json({
+      currentPage: parseInt(page),
+      totalPages,
+      totalRecords: total,
+      sortOrder: orderDirection,
+      sensorIDs,
+      data: rows
+    });
+  } catch (error) {
+    console.error("Error fetching sensor data history:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };

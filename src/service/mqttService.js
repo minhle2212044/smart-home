@@ -24,9 +24,9 @@ async function handleIncomingMessage(topic, message) {
     let value = isNaN(rawData) ? rawData : parseFloat(rawData);
 
     if (root === 'sensors') {
-      const sensorID = await getSensorIdByType(type);
+      const sensorID = await getSensorIdByApiKey(topic);
       if (!sensorID) {
-        console.error('SensorID not found for type:', type);
+        console.error('SensorID not found for topic:', topic);
         return;
       }
 
@@ -48,6 +48,77 @@ async function handleIncomingMessage(topic, message) {
       );
 
       console.log(`Saved sensor data for SensorID=${sensorID}`);
+    } else {
+      const deviceTypeMap = {
+        'fan': 'Mini fan',
+        'door': 'Door',
+        'led': 'Led',
+        'buzzer': 'Buzzer'
+      };
+    
+      const deviceType = deviceTypeMap[type];
+      if (!deviceType) {
+        console.warn(`Unsupported device type in topic: ${type}`);
+        return;
+      }
+    
+      const [deviceRows] = await db.promise().query(
+        'SELECT ID FROM Device WHERE DType = ?',
+        [deviceType]
+      );
+    
+      if (deviceRows.length === 0) {
+        console.error(`No device found for DType: ${deviceType}`);
+        return;
+      }
+    
+      const deviceID = deviceRows[0].ID;
+    
+      let parsed;
+      try {
+        parsed = JSON.parse(message.toString());
+      } catch (e) {
+        console.error('Invalid JSON format from device message:', message.toString());
+        return;
+      }
+    
+      const status = parsed.status;
+      if (!status || !['ON', 'OFF'].includes(status.toUpperCase())) {
+        console.warn('Message missing valid "status":', message.toString());
+        return;
+      }
+    
+      const [modeDeviceRows] = await db.promise().query(
+        `SELECT ModeID FROM ModeDevice WHERE DeviceID = ? ORDER BY ModeID DESC LIMIT 1`,
+        [deviceID]
+      );
+    
+      if (modeDeviceRows.length === 0) {
+        console.warn(`No ModeDevice found for DeviceID=${deviceID}`);
+        return;
+      }
+    
+      const latestModeID = modeDeviceRows[0].ModeID;
+    
+      const [modeRows] = await db.promise().query(
+        `SELECT MType FROM Mode WHERE ID = ?`,
+        [latestModeID]
+      );
+    
+      if (modeRows.length === 0) {
+        console.warn(`No Mode found with ID=${latestModeID}`);
+        return;
+      }
+    
+      const currentTime = new Date();
+      const modeType = modeRows[0].MType;
+    
+      await db.promise().query(
+        `INSERT INTO ActivityLog (AMode, ADescription, ATime, DeviceID) VALUES (?, ?, ?, ?)`,
+        [modeType, status.toUpperCase(), currentTime, deviceID]
+      );
+    
+      console.log(`Saved activity log for DeviceID=${deviceID} | AMode=${modeType} | ADescription=${status}`);
     }
   } catch (error) {
     console.error(`Error processing message: ${error.message}`);

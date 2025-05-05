@@ -102,3 +102,11 @@ CREATE TABLE ScheDetail (
     FOREIGN KEY (ModeID) REFERENCES Mode(ID),
     FOREIGN KEY (DeviceID) REFERENCES Device(ID)
 );
+
+CREATE TABLE ModeDevice (
+    ModeID INT,
+    DeviceID INT,
+    PRIMARY KEY (ModeID, DeviceID),
+    FOREIGN KEY (ModeID) REFERENCES Mode(ID),
+    FOREIGN KEY (DeviceID) REFERENCES Device(ID)
+);

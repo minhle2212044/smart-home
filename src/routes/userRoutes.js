@@ -4,6 +4,6 @@ const userController = require("../controller/userController");
 
 router.get("/:id", userController.getUserById);
 router.put("/update/:id", userController.updateUser);
-router.put("/update-pass/:id", userController.updatePassword);
+router.put("/change-pass/:id", userController.updatePassword);
 
 module.exports = router;
