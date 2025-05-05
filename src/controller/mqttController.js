@@ -14,7 +14,6 @@ exports.switchTopicsForUser = async (req, res) => {
 
     mqttService.registerMessageHandler(async (topic, message) => {
         try {
-          console.log(`Received on ${topic}: ${message.toString()}`);
       
           const rawData = message.toString();
           let value = null;
@@ -46,7 +45,6 @@ exports.switchTopicsForUser = async (req, res) => {
             [sensorData.STime, sensorData.DataType, sensorData.NumData, sensorData.TextData, sensorData.SensorID]
           );
       
-          console.log(`✅ Saved sensor data for SensorID=${sensorID}`);
       
         } catch (error) {
           console.error(`Error processing message: ${error.message}`);

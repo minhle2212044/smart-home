@@ -9,7 +9,6 @@ let sensorDataQueue = [];
 
 async function handleIncomingMessage(topic, message) {
   try {
-    console.log(`Received on ${topic}: ${message.toString()}`);
 
     const segments = topic.split('/');
     if (segments.length < 3) {
@@ -38,16 +37,51 @@ async function handleIncomingMessage(topic, message) {
         SensorID: sensorID
       };
 
-      // Push vào queue cho FE
-      sensorDataQueue.push(sensorData);
-
-      // Save thẳng vào database
       await db.promise().query(
         'INSERT INTO SensorData (STime, DataType, NumData, TextData, SensorID) VALUES (?, ?, ?, ?, ?)',
         [sensorData.STime, sensorData.DataType, sensorData.NumData, sensorData.TextData, sensorData.SensorID]
       );
 
-      console.log(`Saved sensor data for SensorID=${sensorID}`);
+      const [sensorInfo] = await db.promise().query(`
+        SELECT SName, SType, DataEdge, h.UserID 
+        FROM Sensors s
+        JOIN Home h ON s.HomeID = h.ID
+        WHERE s.ID = ?`, 
+        [sensorID]
+      );
+
+      if (sensorInfo.length > 0) {
+        const { SName, SType, DataEdge, UserID } = sensorInfo[0];
+      
+        if (SName === 'Ultrasonic Sensor') return;
+      
+        const edge = parseFloat(DataEdge);
+        if (!isNaN(edge) && typeof value === 'number' && value > edge) {
+          let unit = '';
+          switch (SName) {
+            case 'Temperature Sensor':
+              unit = '°C';
+              break;
+            case 'Humidity Sensor':
+              unit = '%';
+              break;
+            case 'Gas Sensor':
+              unit = 'ppm';
+              break;
+            case 'Light Sensor':
+              unit = 'lux';
+              break;
+            default:
+              unit = '';
+          }
+      
+          const msg = `${SType} đang ở mức cao: ${value}${unit}`;
+          await db.promise().query(`
+            INSERT INTO Notification (Message, NTime, UserID, SensorID, NType, isRead)
+            VALUES (?, NOW(), ?, ?, 'Sensor', false)
+          `, [msg, UserID, sensorID]);
+        }
+      }
     } else {
       const deviceTypeMap = {
         'fan': 'Mini fan',
@@ -55,25 +89,24 @@ async function handleIncomingMessage(topic, message) {
         'led': 'Led',
         'buzzer': 'Buzzer'
       };
-    
+
       const deviceType = deviceTypeMap[type];
       if (!deviceType) {
         console.warn(`Unsupported device type in topic: ${type}`);
         return;
       }
-    
+
       const [deviceRows] = await db.promise().query(
-        'SELECT ID FROM Device WHERE DType = ?',
+        'SELECT ID, DName, HomeID FROM Device WHERE DType = ?',
         [deviceType]
       );
-    
       if (deviceRows.length === 0) {
         console.error(`No device found for DType: ${deviceType}`);
         return;
       }
-    
-      const deviceID = deviceRows[0].ID;
-    
+
+      const { ID: deviceID, DName, HomeID } = deviceRows[0];
+
       let parsed;
       try {
         parsed = JSON.parse(message.toString());
@@ -81,44 +114,46 @@ async function handleIncomingMessage(topic, message) {
         console.error('Invalid JSON format from device message:', message.toString());
         return;
       }
-    
-      const status = parsed.status;
-      if (!status || !['ON', 'OFF'].includes(status.toUpperCase())) {
-        console.warn('Message missing valid "status":', message.toString());
+
+      const statusRaw = parsed.status;
+
+      let status;
+      if (typeof statusRaw === 'boolean') {
+        status = statusRaw ? 'ON' : 'OFF';
+      } else if (typeof statusRaw === 'string' && ['ON', 'OFF'].includes(statusRaw.toUpperCase())) {
+        status = statusRaw.toUpperCase();
+      } else {
         return;
       }
-    
+
+      const [userRows] = await db.promise().query(
+        `SELECT UserID FROM Home WHERE ID = ?`,
+        [HomeID]
+      );
+      const userID = userRows.length > 0 ? userRows[0].UserID : null;
+
       const [modeDeviceRows] = await db.promise().query(
         `SELECT ModeID FROM ModeDevice WHERE DeviceID = ? ORDER BY ModeID DESC LIMIT 1`,
         [deviceID]
       );
-    
-      if (modeDeviceRows.length === 0) {
-        console.warn(`No ModeDevice found for DeviceID=${deviceID}`);
-        return;
-      }
-    
-      const latestModeID = modeDeviceRows[0].ModeID;
-    
-      const [modeRows] = await db.promise().query(
-        `SELECT MType FROM Mode WHERE ID = ?`,
-        [latestModeID]
-      );
-    
-      if (modeRows.length === 0) {
-        console.warn(`No Mode found with ID=${latestModeID}`);
-        return;
-      }
-    
+
+      const modeID = modeDeviceRows.length > 0 ? modeDeviceRows[0].ModeID : null;
+      const [modeRows] = modeID ? await db.promise().query(`SELECT MType FROM Mode WHERE ID = ?`, [modeID]) : [[]];
+      const modeType = modeRows.length > 0 ? modeRows[0].MType : 'Manual';
+
       const currentTime = new Date();
-      const modeType = modeRows[0].MType;
-    
       await db.promise().query(
         `INSERT INTO ActivityLog (AMode, ADescription, ATime, DeviceID) VALUES (?, ?, ?, ?)`,
         [modeType, status.toUpperCase(), currentTime, deviceID]
       );
-    
-      console.log(`Saved activity log for DeviceID=${deviceID} | AMode=${modeType} | ADescription=${status}`);
+
+      if (userID) {
+        const msg = `Thiết bị "${DName}" chuyển sang trạng thái: ${status.toUpperCase()}`;
+        await db.promise().query(`
+          INSERT INTO Notification (Message, NTime, UserID, SensorID, NType, isRead)
+          VALUES (?, NOW(), ?, NULL, 'Device', false)
+        `, [msg, userID]);
+      }
     }
   } catch (error) {
     console.error(`Error processing message: ${error.message}`);

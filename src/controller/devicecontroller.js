@@ -1,5 +1,6 @@
 const db = require('../../config/db');
 const mqttService = require('../service/mqttService');
+const ExcelJS = require('exceljs');
 
 exports.getDeviceByID = async (req, res) => {
   try {
@@ -132,7 +133,6 @@ exports.manualControl = async (req, res) => {
         return res.status(500).json({ message: 'Publish failed' });
       }
 
-      console.log(`Manual control published to ${topic}:`, payload);
       res.status(200).json({ message: 'Manual control sent', topic, payload });
     });
   } catch (error) {
@@ -202,7 +202,6 @@ exports.setThreshold = async (req, res) => {
         [threshold.toString(), sensorID]
       );
 
-      console.log(`Đã cập nhật ngưỡng ${threshold} cho sensor ID ${sensorID}`);
 
       res.status(200).json({
         message: 'Đặt ngưỡng và cập nhật cảm biến thành công',
@@ -309,13 +308,11 @@ exports.SetParameter = async (req, res) => {
           'UPDATE Device SET Parameter = ? WHERE ID = ?', 
           [parameterToStore.toString(), deviceID]
         );
-        console.log(`🔧 Cập nhật parameter "${parameterToStore}" cho thiết bị ID=${deviceID}`);
       } catch (updateErr) {
         console.error('Lỗi cập nhật parameter trong DB:', updateErr.message);
         return res.status(500).json({ message: 'Gửi lệnh thành công nhưng lỗi khi lưu DB' });
       }
 
-      console.log(`Published to ${APIKey}: ${message}`);
       res.status(200).json({ message: 'Gửi và lưu thành công', sent: messageObj });
     });
 
@@ -325,109 +322,6 @@ exports.SetParameter = async (req, res) => {
   }
 };
 
-
-exports.addSchedule = async (req, res) => {
-  try {
-    const { deviceID, hour, minute, status, para, userID } = req.body;
-
-    if (!deviceID || hour === undefined || minute === undefined || status === undefined || para === undefined || !userID) {
-      return res.status(400).json({ message: 'Thiếu thông tin cần thiết' });
-    }
-
-    const [rows] = await db.promise().query('SELECT APIKey, DType FROM Device WHERE ID = ?', [deviceID]);
-    if (rows.length === 0) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
-
-    const { APIKey, DType } = rows[0];
-    const type = DType.toLowerCase();
-
-    if (!type.includes('fan') && !type.includes('led')) {
-      return res.status(400).json({ message: `Thiết bị ${DType} không hỗ trợ đặt lịch` });
-    }
-
-    const client = mqttService.getClient();
-    if (!client || !client.connected) {
-      return res.status(500).json({ message: 'MQTT client chưa kết nối' });
-    }
-
-    // === 1. Gửi mode trước ===
-    const modeMessage = JSON.stringify({ action: 'set_mode', mode: 1 });
-    client.publish(APIKey, modeMessage, (err) => {
-      if (err) {
-        console.error('Lỗi gửi set_mode:', err.message);
-        return res.status(500).json({ message: 'Gửi mode thất bại' });
-      }
-      console.log(`Published to ${APIKey}: ${modeMessage}`);
-    });
-
-    // === 2. Lưu thông tin vào CSDL ===
-    const modeType = 'SCHEDULE';
-    const now = new Date();
-
-    const [modeResult] = await db.promise().query(
-      'INSERT INTO Mode (MType, MTime, UserID) VALUES (?, ?, ?)',
-      [modeType, now, userID]
-    );
-    const modeID = modeResult.insertId;
-
-    await db.promise().query(
-      'INSERT INTO ModeDevice (ModeID, DeviceID) VALUES (?, ?)',
-      [modeID, deviceID]
-    );
-
-    const scheDescription = `Hẹn giờ ${status ? 'bật' : 'tắt'} ${DType} sau ${hour}:${minute < 10 ? '0' + minute : minute}, giá trị: ${para}`;
-    await db.promise().query(
-      'INSERT INTO ScheMode (ModeID, SDescription) VALUES (?, ?)',
-      [modeID, scheDescription]
-    );
-
-    const startTime = new Date(now.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
-    const endTime = new Date(startTime.getTime() + 10 * 60 * 1000);
-
-    await db.promise().query(
-      'INSERT INTO ScheDetail (StartTime, EndTime, ModeID, DeviceID) VALUES (?, ?, ?, ?)',
-      [startTime, endTime, modeID, deviceID]
-    );
-
-    // === 3. Gửi lịch sau khi gửi mode ===
-    let messageObj = {
-      action: 'add_schedule',
-      hour,
-      minute,
-      status: Boolean(status),
-    };
-
-    if (type.includes('fan')) {
-      messageObj.speed = para;
-    } else if (type.includes('led')) {
-      messageObj.brightness = para;
-    }
-
-    const message = JSON.stringify(messageObj);
-
-    client.publish(APIKey, message, (err) => {
-      if (err) {
-        console.error('Lỗi publish MQTT:', err.message);
-        return res.status(500).json({ message: 'Gửi lệnh lịch thất bại' });
-      }
-
-      console.log(`Published to ${APIKey}: ${message}`);
-      res.status(200).json({
-        message: 'Đặt lịch thành công và đã lưu vào CSDL',
-        sent: messageObj,
-        dbRecord: {
-          modeID,
-          scheDescription,
-          startTime,
-          endTime
-        }
-      });
-    });
-
-  } catch (error) {
-    console.error('Lỗi addSchedule:', error.message);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
 
 exports.getDeviceDataHistory = async (req, res) => {
   try {
@@ -500,6 +394,90 @@ exports.getDeviceDataHistory = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching device activity history:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.exportDeviceDataToExcel = async (req, res) => {
+  try {
+    let { deviceID, startDate, endDate, sortOrder = 'asc' } = req.query;
+
+    if (!deviceID) {
+      return res.status(400).json({ message: "Missing deviceID" });
+    }
+
+    const deviceIDs = deviceID.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    if (deviceIDs.length === 0) {
+      return res.status(400).json({ message: "Invalid deviceID list" });
+    }
+
+    let dateCondition = '';
+    const params = [];
+
+    if (startDate) {
+      dateCondition += ' AND al.ATime >= ?';
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      dateCondition += ' AND al.ATime <= ?';
+      params.push(endDate);
+    }
+
+    const devicePlaceholders = deviceIDs.map(() => '?').join(',');
+    const orderDirection = sortOrder.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+
+    const [rows] = await db.promise().query(
+      `SELECT 
+         al.ID,
+         al.DeviceID,
+         al.AMode,
+         al.ADescription,
+         al.ATime,
+         d.DName,
+         d.DType,
+         r.Name AS RoomName
+       FROM ActivityLog al
+       JOIN Device d ON al.DeviceID = d.ID
+       LEFT JOIN Room r ON d.RoomID = r.RoomID
+       WHERE al.DeviceID IN (${devicePlaceholders}) ${dateCondition}
+       ORDER BY al.ATime ${orderDirection}`,
+      [...deviceIDs, ...params]
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Device Activity History');
+
+    worksheet.columns = [
+      { header: 'Log ID', key: 'ID', width: 10 },
+      { header: 'Device ID', key: 'DeviceID', width: 12 },
+      { header: 'Device Name', key: 'DName', width: 20 },
+      { header: 'Device Type', key: 'DType', width: 15 },
+      { header: 'Room Name', key: 'RoomName', width: 20 },
+      { header: 'Mode', key: 'AMode', width: 10 },
+      { header: 'Description', key: 'ADescription', width: 30 },
+      { header: 'Time', key: 'ATime', width: 25 },
+    ];
+
+    rows.forEach(row => {
+      worksheet.addRow(row);
+    });
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=device_activity_history.xlsx'
+    );
+
+    // Ghi workbook ra response
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+
+  } catch (error) {
+    console.error("Error exporting device data to Excel:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 };

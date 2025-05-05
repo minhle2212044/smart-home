@@ -1,4 +1,5 @@
 const db = require('../../config/db');
+const ExcelJS = require('exceljs');
 
 exports.getSensorByID = async (req, res) => {
   try {
@@ -211,6 +212,84 @@ exports.getSensorDataHistory = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching sensor data history:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.exportSensorDataToExcel = async (req, res) => {
+  try {
+    let { sensorID, startDate, endDate, sortOrder = 'asc' } = req.query;
+
+    if (!sensorID) {
+      return res.status(400).json({ message: "Missing sensorID" });
+    }
+
+    const sensorIDs = sensorID.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    if (sensorIDs.length === 0) {
+      return res.status(400).json({ message: "Invalid sensorID list" });
+    }
+
+    const orderDirection = sortOrder.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+
+    let dateCondition = '';
+    const params = [];
+
+    if (startDate) {
+      dateCondition += ' AND sd.STime >= ?';
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      dateCondition += ' AND sd.STime <= ?';
+      params.push(endDate);
+    }
+
+    const sensorPlaceholders = sensorIDs.map(() => '?').join(',');
+
+    const [rows] = await db.promise().query(
+      `SELECT 
+         sd.ID, 
+         sd.SensorID,
+         sd.STime, 
+         sd.NumData,
+         sd.TextData,
+         sd.DataType,
+         s.SName,
+         s.SType,
+         r.Name AS RoomName
+       FROM SensorData sd
+       JOIN Sensors s ON sd.SensorID = s.ID
+       LEFT JOIN Room r ON s.RoomID = r.RoomID
+       WHERE sd.SensorID IN (${sensorPlaceholders}) ${dateCondition}
+       ORDER BY sd.STime ${orderDirection}`,
+      [...sensorIDs, ...params]
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Sensor Data History');
+
+    worksheet.columns = [
+      { header: 'ID', key: 'ID', width: 10 },
+      { header: 'Sensor ID', key: 'SensorID', width: 10 },
+      { header: 'Sensor Name', key: 'SName', width: 20 },
+      { header: 'Sensor Type', key: 'SType', width: 15 },
+      { header: 'Room', key: 'RoomName', width: 20 },
+      { header: 'Time', key: 'STime', width: 20 },
+      { header: 'Number Data', key: 'NumData', width: 15 },
+      { header: 'Text Data', key: 'TextData', width: 20 },
+      { header: 'Data Type', key: 'DataType', width: 15 }
+    ];
+
+    rows.forEach(row => worksheet.addRow(row));
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=sensor_data_history.xlsx');
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (error) {
+    console.error("Error exporting sensor data:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 };

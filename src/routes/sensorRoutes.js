@@ -6,6 +6,7 @@ router.get('/', sensorController.getSensorsByUser);
 router.get('/infor', sensorController.getSensorByID);
 router.get('/data', sensorController.getLatestSensorData);
 router.get('/history', sensorController.getSensorDataHistory);
+router.get('/export', sensorController.exportSensorDataToExcel);
 
 router.post('/', sensorController.addSensor);
 router.put('/:id', sensorController.updateSensor);

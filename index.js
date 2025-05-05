@@ -11,6 +11,8 @@ const userRoutes = require('./src/routes/userRoutes');
 const deviceRoutes = require('./src/routes/deviceRoutes');
 const sensorRoutes = require('./src/routes/sensorRoutes');
 const mqttRoutes = require('./src/routes/mqttRoutes');
+const scheduleRoutes = require('./src/routes/scheduleRoutes');
+const notificationRoutes = require('./src/routes/notiRoutes');
 const {isAuth} = require("./src/middleware/authMiddleware");
 app.use(bodyParser.json({ limit: "150mb" })); 
 app.use(bodyParser.urlencoded({ limit: "150mb", extended: true })); 
@@ -20,8 +22,10 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", isAuth, userRoutes);
 app.use("/api/topic", isAuth, mqttRoutes);
-app.use("/api/device", deviceRoutes);
+app.use("/api/device", isAuth, deviceRoutes);
 app.use("/api/sensor", isAuth, sensorRoutes);
+app.use("/api/schedule", isAuth, scheduleRoutes);
+app.use("/api/notification", isAuth, notificationRoutes);
 
 app.get("/", (req, res) => {
     res.send("Hello World");

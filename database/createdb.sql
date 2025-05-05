@@ -88,8 +88,9 @@ CREATE TABLE Mode (
 );
 
 CREATE TABLE ScheMode (
-    ModeID INT  PRIMARY KEY,
+    ModeID INT PRIMARY KEY,
     SDescription NVARCHAR(100),
+    SIndex INT UNIQUE NOT NULL CHECK (SIndex >= 0 AND SIndex <= 4),
     FOREIGN KEY (ModeID) REFERENCES Mode(ID)
 );
 
