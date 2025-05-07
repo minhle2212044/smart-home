@@ -64,10 +64,12 @@ CREATE TABLE Notification (
     NTime DATETIME,
     UserID INT,
     SensorID INT,
+    DeviceID INT,
     NType VARCHAR(50),
     isRead BOOLEAN,
     FOREIGN KEY (UserID) REFERENCES User(ID),
     FOREIGN KEY (SensorID) REFERENCES Sensors(ID)
+    FOREIGN KEY (DeviceID) REFERENCES Device(ID)
 );
 
 CREATE TABLE ActivityLog (

@@ -11,7 +11,7 @@ const mqttController = require('../controller/mqttController');
 
 /**
  * @swagger
- * /topic/switch-topics:
+ * /api/topic/switch-topics:
  *   post:
  *     summary: Kết nối và đăng ký nhận dữ liệu từ các topic MQTT tương ứng với user + home
  *     tags: [MQTT]

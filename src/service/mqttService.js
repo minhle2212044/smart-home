@@ -150,9 +150,9 @@ async function handleIncomingMessage(topic, message) {
       if (userID) {
         const msg = `Thiết bị "${DName}" chuyển sang trạng thái: ${status.toUpperCase()}`;
         await db.promise().query(`
-          INSERT INTO Notification (Message, NTime, UserID, SensorID, NType, isRead)
-          VALUES (?, NOW(), ?, NULL, 'Device', false)
-        `, [msg, userID]);
+          INSERT INTO Notification (Message, NTime, UserID, DeviceID, NType, isRead)
+          VALUES (?, NOW(), ?, ?, 'Device', false)
+        `, [msg, userID, deviceID]);
       }
     }
   } catch (error) {

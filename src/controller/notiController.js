@@ -52,30 +52,93 @@ exports.getNotifications = async (req, res) => {
   };
   
   
-
-exports.getNotificationById = async (req, res) => {
+  exports.getNotificationById = async (req, res) => {
     try {
       const { id } = req.params;
   
-      const [rows] = await db.promise().query(
-        `SELECT n.ID, n.Message, n.NTime, n.NType, n.isRead, s.SName, s.SType, u.Fullname
-         FROM Notification n
-         LEFT JOIN Sensors s ON n.SensorID = s.ID
-         LEFT JOIN User u ON n.UserID = u.ID
-         WHERE n.ID = ?`,
+      const [notifications] = await db.promise().query(
+        `SELECT ID, Message, NTime, NType, isRead, UserID, SensorID, DeviceID 
+         FROM Notification 
+         WHERE ID = ?`,
         [id]
       );
   
-      if (rows.length === 0) {
+      if (notifications.length === 0) {
         return res.status(404).json({ message: "Notification not found" });
       }
   
-      res.status(200).json(rows[0]);
+      const notification = notifications[0];
+      const { SensorID, DeviceID, UserID } = notification;
+  
+      let locationData = null;
+  
+      if (SensorID) {
+        const [[sensorRow]] = await db.promise().query(
+          `SELECT 
+             s.SName,
+             s.SType,
+             r.RoomID, r.Name AS RoomName,
+             h.ID AS HomeID, h.HName AS HomeName
+           FROM Sensors s
+           JOIN Room r ON s.RoomID = r.RoomID
+           JOIN Home h ON s.HomeID = h.ID
+           WHERE s.ID = ?`,
+          [SensorID]
+        );
+        locationData = {
+          SName: sensorRow.SName,
+          SType: sensorRow.SType,
+          RoomID: sensorRow.RoomID,
+          RoomName: sensorRow.RoomName,
+          HomeID: sensorRow.HomeID,
+          HomeName: sensorRow.HomeName,
+          DName: null
+        };
+      } else if (DeviceID) {
+        const [[deviceRow]] = await db.promise().query(
+          `SELECT 
+             d.DName,
+             r.RoomID, r.Name AS RoomName,
+             h.ID AS HomeID, h.HName AS HomeName
+           FROM Device d
+           JOIN Room r ON d.RoomID = r.RoomID
+           JOIN Home h ON d.HomeID = h.ID
+           WHERE d.ID = ?`,
+          [DeviceID]
+        );
+        locationData = {
+          SName: null,
+          SType: null,
+          DName: deviceRow.DName,
+          RoomID: deviceRow.RoomID,
+          RoomName: deviceRow.RoomName,
+          HomeID: deviceRow.HomeID,
+          HomeName: deviceRow.HomeName
+        };
+      }
+  
+      const [[userRow]] = await db.promise().query(
+        `SELECT Fullname FROM User WHERE ID = ?`,
+        [UserID]
+      );
+  
+      res.status(200).json({
+        ID: notification.ID,
+        Message: notification.Message,
+        NTime: notification.NTime,
+        NType: notification.NType,
+        isRead: notification.isRead,
+        Fullname: userRow?.Fullname || null,
+        ...locationData
+      });
+  
     } catch (error) {
       console.error("Error fetching notification detail:", error.message);
       res.status(500).json({ message: "Internal server error" });
     }
   };
+  
+  
   
   exports.markNotificationAsRead = async (req, res) => {
     try {
