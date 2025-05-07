@@ -11,7 +11,7 @@ const authController = require("../controller/authController");
 
 /**
  * @swagger
- * /auth/register:
+ * /api/auth/register:
  *   post:
  *     summary: Đăng ký người dùng mới
  *     tags: [Auth]
@@ -62,7 +62,7 @@ router.post("/register", authController.register);
 
 /**
  * @swagger
- * /auth/login:
+ * /api/auth/login:
  *   post:
  *     summary: Đăng nhập người dùng
  *     tags: [Auth]
@@ -100,7 +100,7 @@ router.post("/login", authController.login);
 
 /**
  * @swagger
- * /auth/verify-token:
+ * /api/auth/verify-token:
  *   get:
  *     summary: Kiểm tra token hợp lệ
  *     tags: [Auth]

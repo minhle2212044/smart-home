@@ -11,7 +11,7 @@ const notificationController = require('../controller/notiController');
 
 /**
  * @swagger
- * /notification:
+ * /api/notification:
  *   get:
  *     summary: Lấy danh sách thông báo của người dùng
  *     tags: [Notification]
@@ -61,7 +61,7 @@ router.get('/', notificationController.getNotifications);
 
 /**
  * @swagger
- * /notification/{id}:
+ * /api/notification/{id}:
  *   get:
  *     summary: Lấy chi tiết một thông báo
  *     tags: [Notification]
@@ -94,7 +94,7 @@ router.get('/:id', notificationController.getNotificationById);
 
 /**
  * @swagger
- * /notification/{id}/read:
+ * /api/notification/{id}/read:
  *   put:
  *     summary: Đánh dấu thông báo là đã đọc
  *     tags: [Notification]
@@ -118,7 +118,7 @@ router.put('/:id/read', notificationController.markNotificationAsRead);
 
 /**
  * @swagger
- * /notification/mark-all-read/{userID}:
+ * /api/notification/mark-all-read/{userID}:
  *   put:
  *     summary: Đánh dấu tất cả thông báo của người dùng là đã đọc
  *     tags: [Notification]

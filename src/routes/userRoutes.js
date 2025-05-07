@@ -11,7 +11,7 @@ const userController = require("../controller/userController");
 
 /**
  * @swagger
- * /user/{id}:
+ * /api/user/{id}:
  *   get:
  *     summary: Lấy thông tin người dùng theo ID
  *     tags: [User]
@@ -66,7 +66,7 @@ router.get("/:id", userController.getUserById);
 
 /**
  * @swagger
- * /user/update/{id}:
+ * /api/user/update/{id}:
  *   put:
  *     summary: Cập nhật thông tin người dùng
  *     tags: [User]
@@ -118,7 +118,7 @@ router.put("/update/:id", userController.updateUser);
 
 /**
  * @swagger
- * /user/change-pass/{id}:
+ * /api/user/change-pass/{id}:
  *   put:
  *     summary: Thay đổi mật khẩu người dùng
  *     tags: [User]
