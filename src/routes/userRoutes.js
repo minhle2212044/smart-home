@@ -60,7 +60,7 @@ const userController = require("../controller/userController");
  *         content:
  *           application/json:
  *             example:
- *               message: "User not found"
+ *               message: "Không tìm thấy người dùng."
  */
 router.get("/:id", userController.getUserById);
 
@@ -83,36 +83,56 @@ router.get("/:id", userController.getUserById);
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - fullname
+ *               - dob
+ *               - email
+ *               - tel
  *             properties:
  *               fullname:
  *                 type: string
+ *                 example: "Nguyễn Văn C"
  *               dob:
  *                 type: string
  *                 format: date
+ *                 example: "1995-12-01"
  *               email:
  *                 type: string
+ *                 example: "nguyenc@example.com"
  *               tel:
  *                 type: string
- *           example:
- *             fullname: "Nguyễn Văn C"
- *             dob: "1995-12-01"
- *             email: "nguyenc@example.com"
- *             tel: "0123456789"
+ *                 example: "0123456789"
  *     responses:
  *       200:
  *         description: Cập nhật thông tin thành công
  *         content:
  *           application/json:
  *             example:
- *               message: "User updated successfully"
+ *               message: "Cập nhật thông tin người dùng thành công"
  *               user:
  *                 ID: 1
  *                 Fullname: "Nguyễn Văn C"
  *                 Dob: "1995-12-01"
  *                 Email: "nguyenc@example.com"
  *                 Tel: "0123456789"
+ *       400:
+ *         description: Dữ liệu không hợp lệ hoặc thiếu thông tin
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Thiếu hoặc sai định dạng dữ liệu đầu vào."
  *       404:
  *         description: Không tìm thấy người dùng
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Không tìm thấy người dùng."
+ *       500:
+ *         description: Lỗi máy chủ
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Lỗi máy chủ."
  */
 router.put("/update/:id", userController.updateUser);
 
@@ -135,14 +155,16 @@ router.put("/update/:id", userController.updateUser);
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - oldPassword
+ *               - newPassword
  *             properties:
  *               oldPassword:
  *                 type: string
+ *                 example: "123456"
  *               newPassword:
  *                 type: string
- *           example:
- *             oldPassword: "123456"
- *             newPassword: "654321"
+ *                 example: "654321"
  *     responses:
  *       200:
  *         description: Mật khẩu đã được thay đổi thành công
@@ -150,6 +172,12 @@ router.put("/update/:id", userController.updateUser);
  *           application/json:
  *             example:
  *               message: "Cập nhật mật khẩu thành công."
+ *       400:
+ *         description: Thiếu thông tin mật khẩu hoặc lỗi đầu vào
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Thiếu thông tin mật khẩu."
  *       401:
  *         description: Mật khẩu cũ không đúng
  *         content:
@@ -158,7 +186,18 @@ router.put("/update/:id", userController.updateUser);
  *               message: "Mật khẩu cũ không đúng."
  *       404:
  *         description: Không tìm thấy người dùng
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Không tìm thấy người dùng."
+ *       500:
+ *         description: Lỗi máy chủ
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Lỗi máy chủ."
  */
+
 router.put("/change-pass/:id", userController.updatePassword);
 
 module.exports = router;

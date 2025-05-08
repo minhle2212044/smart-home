@@ -8,7 +8,7 @@ module.exports = {
       },
       servers: [
         {
-          url: "http://localhost:3003/api",
+          url: "http://localhost:3003",
         },
       ],
       components: {
