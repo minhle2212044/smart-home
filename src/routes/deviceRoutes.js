@@ -70,13 +70,18 @@ router.get('/', deviceController.getDevicesByUser);
  *   get:
  *     summary: Lấy thông tin chi tiết của thiết bị theo deviceID
  *     tags: [Device]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID của thiết bị
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deviceID:
+ *                 type: integer
+ *                 example: 1
+ *             required:
+ *               - deviceID
  *     responses:
  *       200:
  *         description: Trả về thông tin thiết bị
@@ -214,10 +219,22 @@ router.post('/mode', deviceController.setMode);
  *     responses:
  *       200:
  *         description: Điều khiển thủ công thành công
- *         content:
+*         content:
  *           application/json:
- *             example:
- *               message: "Manual control sent"
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 topic:
+ *                   type: string
+ *                 sentPayload:
+ *                   type: object
+ *                   properties:
+ *                     action:
+ *                       type: string
+ *                     status:
+ *                       type: boolean
  *       400:
  *         description: Thiếu hoặc sai tham số đầu vào
  *         content:
@@ -265,7 +282,7 @@ router.post('/manual-control', deviceController.manualControl);
  *       500:
  *         description: Lỗi server
  */
-router.post('/set-threshold', deviceController.setThreshold);
+router.post('/threhold', deviceController.setThreshold);
 
 /**
  * @swagger
@@ -480,22 +497,25 @@ router.post('/set-password', deviceController.setPassword);
 /**
  * @swagger
  * /api/device/verify-password:
- *   get:
- *     summary: Xác minh mật khẩu thiết bị
+ *   post:
+ *     summary: Xác minh mật khẩu thiết bị và mở cửa thủ công nếu đúng
  *     tags: [Device]
- *     parameters:
- *       - in: query
- *         name: deviceID
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID của thiết bị
- *       - in: query
- *         name: inputPassword
- *         required: true
- *         schema:
- *           type: string
- *         description: Mật khẩu nhập vào
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deviceID:
+ *                 type: integer
+ *                 description: ID của thiết bị
+ *               inputPassword:
+ *                 type: string
+ *                 description: Mật khẩu nhập vào
+ *             required:
+ *               - deviceID
+ *               - inputPassword
  *     responses:
  *       200:
  *         description: Xác minh mật khẩu thành công
@@ -504,17 +524,23 @@ router.post('/set-password', deviceController.setPassword);
  *             example:
  *               message: "Mở cửa thủ công thành công"
  *       400:
- *         description: Thiếu hoặc sai tham số đầu vào
+ *         description: Thiếu hoặc sai tham số đầu vào hoặc thiết bị không hợp lệ
  *         content:
  *           application/json:
  *             example:
- *               message: "Thiếu deviceID hoặc mật khẩu nhập vào"
+ *               message: "Thiết bị không phải là cửa: Light"
  *       401:
  *         description: Mật khẩu sai
  *         content:
  *           application/json:
  *             example:
  *               message: "Mật khẩu sai"
+ *       404:
+ *         description: Không tìm thấy thiết bị
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Không tìm thấy thiết bị"
  *       500:
  *         description: Lỗi server
  */

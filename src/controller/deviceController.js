@@ -1,4 +1,5 @@
 const db = require('../../config/db');
+const Device = require('../model/deviceModel');
 const mqttService = require('../service/mqttService');
 const ExcelJS = require('exceljs');
 
@@ -65,7 +66,10 @@ exports.setMode = async (req, res) => {
     if (![0, 2].includes(modeID)) {
       return res.status(400).json({ message: 'Giá trị modeID không hợp lệ (0: Manual, 2: Auto)' });
     }
-
+    const [[user]] = await db.promise().query("SELECT ID FROM User WHERE ID = ?", [userID]);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
     const [[device]] = await db.promise().query("SELECT APIKey FROM Device WHERE ID = ?", [deviceID]);
     if (!device) return res.status(404).json({ message: "Không tìm thấy thiết bị" });
 
@@ -538,6 +542,7 @@ exports.verifyPassword = async (req, res) => {
     );
 
     if (!device) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+    
     const { APIKey, DType, Parameter: storedPassword } = device;
 
     if (!DType.toLowerCase().includes('door')) {

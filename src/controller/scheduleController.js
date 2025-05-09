@@ -1,5 +1,10 @@
 const db = require('../../config/db');
+const scheduleModel = require('../model/scheduleModel');
 const mqttService = require('../service/mqttService');
+
+function formatDateToMySQL(date) {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
 
 exports.addSchedule = async (req, res) => {
     try {
@@ -10,7 +15,7 @@ exports.addSchedule = async (req, res) => {
       }
   
       // Kiểm tra tổng số lượng lịch (tối đa 5)
-      const [existingSchedules] = await db.promise().query('SELECT ModeID FROM ScheMode');
+      const existingSchedules = await scheduleModel.countSchedules();
       if (existingSchedules.length >= 5) {
         return res.status(400).json({ message: 'Chỉ được đặt tối đa 5 lịch trong toàn hệ thống' });
       }
@@ -19,8 +24,7 @@ exports.addSchedule = async (req, res) => {
   
       // Nếu không truyền index, tự động tìm index trống từ 0–4 trong bảng ScheMode
       if (freeIndex === undefined) {
-        const [rows] = await db.promise().query('SELECT SIndex FROM ScheMode');
-        const usedIndexes = rows.map(r => r.SIndex);
+        const usedIndexes = await scheduleModel.getUsedIndexes();
         for (let i = 0; i < 5; i++) {
           if (!usedIndexes.includes(i)) {
             freeIndex = i;
@@ -34,10 +38,10 @@ exports.addSchedule = async (req, res) => {
       }
   
       // Lấy thông tin thiết bị
-      const [deviceRows] = await db.promise().query('SELECT APIKey, DType FROM Device WHERE ID = ?', [deviceID]);
-      if (deviceRows.length === 0) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+      const deviceInfo = await scheduleModel.getDeviceInfo(deviceID);
+      if (!deviceInfo) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
   
-      const { APIKey, DType } = deviceRows[0];
+      const { APIKey, DType } = deviceInfo;
       const type = DType.toLowerCase();
   
       if (!type.includes('fan') && !type.includes('led')) {
@@ -49,35 +53,18 @@ exports.addSchedule = async (req, res) => {
         return res.status(500).json({ message: 'MQTT client chưa kết nối' });
       }
   
-      const modeType = 'SCHEDULE';
       const now = new Date();
   
-      // Thêm mode
-      const [modeResult] = await db.promise().query(
-        'INSERT INTO Mode (MType, MTime, UserID) VALUES (?, ?, ?)',
-        [modeType, now, userID]
-      );
-      const modeID = modeResult.insertId;
-  
-      // Gắn thiết bị vào mode
-      await db.promise().query(
-        'INSERT INTO ModeDevice (ModeID, DeviceID) VALUES (?, ?)',
-        [modeID, deviceID]
-      );
+      const modeID = await scheduleModel.insertMode(now, userID);
+      await scheduleModel.linkDeviceToMode(modeID, deviceID);
   
       const scheDescription = `Hẹn giờ ${status ? 'bật' : 'tắt'} ${DType} sau ${hour}:${minute < 10 ? '0' + minute : minute}, giá trị: ${para}`;
-      await db.promise().query(
-        'INSERT INTO ScheMode (ModeID, SDescription, SIndex) VALUES (?, ?, ?)',
-        [modeID, scheDescription, freeIndex]
-      );
+      await scheduleModel.insertScheMode(modeID, scheDescription, freeIndex);
   
-      const startTime = new Date(now.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
-      const endTime = new Date(startTime.getTime() + 10 * 60 * 1000);
+      const startTime = new Date(now.getTime() + hour * 0 + minute * 0);
+      const endTime = new Date(startTime.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
   
-      await db.promise().query(
-        'INSERT INTO ScheDetail (StartTime, EndTime, ModeID, DeviceID) VALUES (?, ?, ?, ?)',
-        [startTime, endTime, modeID, deviceID]
-      );
+      await scheduleModel.insertScheDetail(startTime, endTime, modeID, deviceID);
   
       let messageObj = {
         action: 'add_schedule',
@@ -126,21 +113,13 @@ exports.addSchedule = async (req, res) => {
         return res.status(400).json({ message: 'Thiếu thông tin cần thiết' });
       }
   
-      // Lấy thông tin từ index
-      const [[deviceRow]] = await db.promise().query(
-        `SELECT sm.ModeID, md.DeviceID, d.APIKey, d.DType
-         FROM ScheMode sm
-         JOIN ModeDevice md ON sm.ModeID = md.ModeID
-         JOIN Device d ON md.DeviceID = d.ID
-         WHERE sm.SIndex = ?`,
-        [index]
-      );
+      const scheduleInfo = await scheduleModel.getScheduleByIndex(index);
   
-      if (!deviceRow) {
+      if (!scheduleInfo) {
         return res.status(404).json({ message: 'Không tìm thấy lịch với index đã cung cấp' });
       }
   
-      const { ModeID, DeviceID, APIKey, DType } = deviceRow;
+      const { ModeID, DeviceID, APIKey, DType } = scheduleInfo;
       const type = DType.toLowerCase();
       const client = mqttService.getClient();
       if (!client || !client.connected) {
@@ -154,19 +133,15 @@ exports.addSchedule = async (req, res) => {
       // Bước 2: Cập nhật mô tả & thời gian
       const now = new Date();
       const scheDescription = `Cập nhật hẹn giờ ${status ? 'bật' : 'tắt'} ${DType} sau ${hour}:${minute < 10 ? '0' + minute : minute}, giá trị: ${para}`;
-      const startTime = new Date(now.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
-      const endTime = new Date(startTime.getTime() + 10 * 60 * 1000);
-  
-      await db.promise().query(
-        'UPDATE ScheMode SET SDescription = ? WHERE ModeID = ?',
-        [scheDescription, ModeID]
-      );
-  
+      const startTime = new Date(now.getTime() + hour * 0 + minute * 0);
+      const endTime = new Date(startTime.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
+
+      await scheduleModel.updateScheModeDescription(ModeID, scheDescription);
       await db.promise().query(
         'UPDATE ScheDetail SET StartTime = ?, EndTime = ? WHERE ModeID = ? AND DeviceID = ?',
         [startTime, endTime, ModeID, DeviceID]
       );
-  
+      
       // Bước 3: Gửi lệnh lịch mới qua MQTT
       let messageObj = {
         action: 'add_schedule',
@@ -211,25 +186,15 @@ exports.addSchedule = async (req, res) => {
         return res.status(400).json({ message: 'Thiếu index để xóa lịch' });
       }
   
-      const [[row]] = await db.promise().query(
-        `SELECT sm.ModeID, d.APIKey 
-         FROM ScheMode sm 
-         JOIN ModeDevice md ON sm.ModeID = md.ModeID 
-         JOIN Device d ON md.DeviceID = d.ID 
-         WHERE sm.SIndex = ?`,
-        [index]
-      );
+      const info = await scheduleModel.getScheduleByIndex(index);
   
-      if (!row) {
+      if (!info) {
         return res.status(404).json({ message: 'Không tìm thấy lịch với index này' });
       }
   
-      const { ModeID, APIKey } = row;
+      const { ModeID, APIKey } = info;
   
-      await db.promise().query('DELETE FROM ScheDetail WHERE ModeID = ?', [ModeID]);
-      await db.promise().query('DELETE FROM ScheMode WHERE ModeID = ?', [ModeID]);
-      await db.promise().query('DELETE FROM ModeDevice WHERE ModeID = ?', [ModeID]);
-      await db.promise().query('DELETE FROM Mode WHERE ID = ?', [ModeID]);
+      await scheduleModel.deleteScheduleByModeID(ModeID);
   
       const message = JSON.stringify({ action: 'delete_schedule', index: Number(index) });
       const client = mqttService.getClient();
@@ -252,39 +217,14 @@ exports.addSchedule = async (req, res) => {
 
   exports.getSchedules = async (req, res) => {
     try {
-      const [rows] = await db.promise().query(`
-        SELECT 
-          sm.SIndex,
-          d.ID AS DeviceID,
-          d.DName AS DeviceName,
-          d.DType AS DeviceType,
-          sm.SDescription,
-          sd.StartTime,
-          sd.EndTime,
-          m.UserID
-        FROM ScheMode sm
-        JOIN ModeDevice md ON sm.ModeID = md.ModeID
-        JOIN Device d ON md.DeviceID = d.ID
-        JOIN ScheDetail sd ON sm.ModeID = sd.ModeID
-        JOIN Mode m ON sm.ModeID = m.ID
-        ORDER BY sm.SIndex ASC
-      `);
-  
-      const formatted = rows.map(r => ({
-        index: r.SIndex,
-        deviceID: r.DeviceID,
-        deviceName: r.DeviceName,
-        deviceType: r.DeviceType,
-        description: r.SDescription,
-        startTime: r.StartTime,
-        endTime: r.EndTime,
-        userID: r.UserID
-      }));
-  
-      res.status(200).json({
-        total: formatted.length,
-        schedules: formatted
-      });
+      const { userID } = req.body;
+
+      if (!userID) {
+        return res.status(400).json({ message: 'Thiếu userID' });
+      }
+
+      const schedules = await scheduleModel.getSchedulesByUser(userID);
+      res.status(200).json({ total: schedules.length, schedules });
   
     } catch (error) {
       console.error('Lỗi getSchedules:', error.message);
@@ -300,41 +240,10 @@ exports.addSchedule = async (req, res) => {
         return res.status(400).json({ message: 'Thiếu chỉ số index của lịch' });
       }
   
-      const [rows] = await db.promise().query(`
-        SELECT 
-          sm.SIndex,
-          d.ID AS DeviceID,
-          d.DName AS DeviceName,
-          d.DType AS DeviceType,
-          sm.SDescription,
-          sd.StartTime,
-          sd.EndTime,
-          m.UserID
-        FROM ScheMode sm
-        JOIN ModeDevice md ON sm.ModeID = md.ModeID
-        JOIN Device d ON md.DeviceID = d.ID
-        JOIN ScheDetail sd ON sm.ModeID = sd.ModeID
-        JOIN Mode m ON sm.ModeID = m.ID
-        WHERE sm.SIndex = ?
-      `, [index]);
-  
-      if (rows.length === 0) {
-        return res.status(404).json({ message: `Không tìm thấy lịch với index ${index}` });
-      }
-  
-      const r = rows[0];
-      const result = {
-        index: r.SIndex,
-        deviceID: r.DeviceID,
-        deviceName: r.DeviceName,
-        deviceType: r.DeviceType,
-        description: r.SDescription,
-        startTime: r.StartTime,
-        endTime: r.EndTime,
-        userID: r.UserID
-      };
-  
-      res.status(200).json(result);
+      const schedule = await scheduleModel.getScheduleDetail(index);
+      if (!schedule) return res.status(404).json({ message: `Không tìm thấy lịch với index ${index}` });
+
+      res.status(200).json(schedule);
   
     } catch (error) {
       console.error('Lỗi getScheduleByIndex:', error.message);

@@ -1,50 +1,16 @@
 const db = require('../../config/db');
+const notiModel = require('../model/notiModel');
 
 exports.getNotifications = async (req, res) => {
     try {
-      const { userID, page = 1, limit = 10, isRead } = req.query;
+      const { userID, page, limit, isRead } = req.query;
   
       if (!userID) {
         return res.status(400).json({ message: "Missing userID" });
       }
   
-      const offset = (parseInt(page) - 1) * parseInt(limit);
-  
-      let readFilter = '';
-      const dataParams = [userID];
-      const countParams = [userID];
-  
-      if (typeof isRead !== 'undefined') {
-        const isReadBool = isRead === 'true';
-        readFilter = 'AND n.isRead = ?';
-        dataParams.push(isReadBool);
-        countParams.push(isReadBool);
-      }
-  
-      const [rows] = await db.promise().query(
-        `SELECT n.ID, n.Message, n.NTime, n.NType, n.isRead, s.SName, s.SType
-         FROM Notification n
-         LEFT JOIN Sensors s ON n.SensorID = s.ID
-         WHERE n.UserID = ? ${readFilter}
-         ORDER BY n.NTime DESC
-         LIMIT ? OFFSET ?`,
-        [...dataParams, parseInt(limit), offset]
-      );
-  
-      const [countRows] = await db.promise().query(
-        `SELECT COUNT(*) AS total FROM Notification n WHERE n.UserID = ? ${readFilter}`,
-        countParams
-      );
-  
-      const total = countRows[0].total;
-      const totalPages = Math.ceil(total / parseInt(limit));
-  
-      res.status(200).json({
-        currentPage: parseInt(page),
-        totalPages,
-        totalRecords: total,
-        notifications: rows
-      });
+      const result = await notiModel.getNotifications(userID, page, limit, isRead);
+      res.status(200).json(result);
     } catch (error) {
       console.error("Error fetching notifications:", error.message);
       res.status(500).json({ message: "Internal server error" });
@@ -56,35 +22,18 @@ exports.getNotifications = async (req, res) => {
     try {
       const { id } = req.params;
   
-      const [notifications] = await db.promise().query(
-        `SELECT ID, Message, NTime, NType, isRead, UserID, SensorID, DeviceID 
-         FROM Notification 
-         WHERE ID = ?`,
-        [id]
-      );
-  
-      if (notifications.length === 0) {
+      const notification = await notiModel.getNotificationById(id);
+
+      if (!notification) {
         return res.status(404).json({ message: "Notification not found" });
       }
-  
-      const notification = notifications[0];
+
       const { SensorID, DeviceID, UserID } = notification;
   
-      let locationData = null;
+      let locationData = {};
   
       if (SensorID) {
-        const [[sensorRow]] = await db.promise().query(
-          `SELECT 
-             s.SName,
-             s.SType,
-             r.RoomID, r.Name AS RoomName,
-             h.ID AS HomeID, h.HName AS HomeName
-           FROM Sensors s
-           JOIN Room r ON s.RoomID = r.RoomID
-           JOIN Home h ON s.HomeID = h.ID
-           WHERE s.ID = ?`,
-          [SensorID]
-        );
+        const sensorRow = await notiModel.getSensorLocation(SensorID);
         locationData = {
           SName: sensorRow.SName,
           SType: sensorRow.SType,
@@ -95,17 +44,7 @@ exports.getNotifications = async (req, res) => {
           DName: null
         };
       } else if (DeviceID) {
-        const [[deviceRow]] = await db.promise().query(
-          `SELECT 
-             d.DName,
-             r.RoomID, r.Name AS RoomName,
-             h.ID AS HomeID, h.HName AS HomeName
-           FROM Device d
-           JOIN Room r ON d.RoomID = r.RoomID
-           JOIN Home h ON d.HomeID = h.ID
-           WHERE d.ID = ?`,
-          [DeviceID]
-        );
+        const deviceRow = await notiModel.getDeviceLocation(DeviceID);
         locationData = {
           SName: null,
           SType: null,
@@ -117,10 +56,7 @@ exports.getNotifications = async (req, res) => {
         };
       }
   
-      const [[userRow]] = await db.promise().query(
-        `SELECT Fullname FROM User WHERE ID = ?`,
-        [UserID]
-      );
+      const fullname = await notiModel.getUserFullname(UserID);
   
       res.status(200).json({
         ID: notification.ID,
@@ -128,7 +64,7 @@ exports.getNotifications = async (req, res) => {
         NTime: notification.NTime,
         NType: notification.NType,
         isRead: notification.isRead,
-        Fullname: userRow?.Fullname || null,
+        Fullname: fullname,
         ...locationData
       });
   
@@ -144,12 +80,9 @@ exports.getNotifications = async (req, res) => {
     try {
       const { id } = req.params;
   
-      const [result] = await db.promise().query(
-        `UPDATE Notification SET isRead = true WHERE ID = ?`,
-        [id]
-      );
-  
-      if (result.affectedRows === 0) {
+      const success = await notiModel.markAsRead(id);
+
+      if (!success) {
         return res.status(404).json({ message: "Notification not found" });
       }
   
@@ -168,10 +101,7 @@ exports.getNotifications = async (req, res) => {
         return res.status(400).json({ message: "Missing userID" });
       }
   
-      await db.promise().query(
-        `UPDATE Notification SET isRead = true WHERE UserID = ?`,
-        [userID]
-      );
+      await notiModel.markAllAsRead(userID);
   
       res.status(200).json({ message: "All notifications marked as read." });
     } catch (error) {

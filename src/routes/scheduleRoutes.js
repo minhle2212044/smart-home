@@ -76,7 +76,7 @@ router.post('/add-schedule', scheduleController.addSchedule);
 
 /**
  * @swagger
- * /api/schedule/delete-scheduleschedule/{index}:
+ * /api/schedule/delete-schedule/{index}:
  *   delete:
  *     summary: Xoá lịch theo index
  *     tags: [Schedule]
@@ -179,12 +179,25 @@ router.put('/update-schedule', scheduleController.updateSchedule);
 /**
  * @swagger
  * /api/schedule:
- *   get:
- *     summary: Lấy toàn bộ danh sách lịch hiện tại
+ *   post:
+ *     summary: Lấy danh sách lịch theo userID
  *     tags: [Schedule]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userID:
+ *                 type: integer
+ *             required:
+ *               - userID
+ *           example:
+ *             userID: 1
  *     responses:
  *       200:
- *         description: Danh sách lịch
+ *         description: Danh sách lịch theo user
  *         content:
  *           application/json:
  *             schema:
@@ -221,23 +234,29 @@ router.put('/update-schedule', scheduleController.updateSchedule);
  *                   deviceName: "Quạt trần"
  *                   deviceType: "fan"
  *                   description: "Bật quạt lúc 18:30"
- *                   startTime: "18:30"
- *                   endTime: "19:00"
+ *                   startTime: "2025-05-09T18:30:00"
+ *                   endTime: "2025-05-09T19:00:00"
  *                   userID: 1
  *                 - index: 1
  *                   deviceID: 4
  *                   deviceName: "Đèn LED"
  *                   deviceType: "led"
  *                   description: "Tắt đèn lúc 22:00"
- *                   startTime: "22:00"
- *                   endTime: "22:30"
- *                   userID: 2
+ *                   startTime: "2025-05-09T22:00:00"
+ *                   endTime: "2025-05-09T22:30:00"
+ *                   userID: 1
+ *       400:
+ *         description: Thiếu userID
+ *         content:
+ *           application/json:
+ *             example:
+ *               message: "Thiếu userID"
  *       500:
  *         description: Lỗi server
  *         content:
  *           application/json:
  *             example:
- *               message: "Internal server error"
+ *               message: "Lỗi server"
  */
 router.get('/', scheduleController.getSchedules);
 

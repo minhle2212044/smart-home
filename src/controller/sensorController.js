@@ -1,4 +1,5 @@
 const db = require('../../config/db');
+const Sensor = require('../model/sensorModel');
 const ExcelJS = require('exceljs');
 
 exports.getSensorByID = async (req, res) => {
@@ -9,30 +10,13 @@ exports.getSensorByID = async (req, res) => {
       return res.status(400).json({ message: "Missing sensorID" });
     }
 
-    const [sensorRows] = await db.promise().query(
-      `SELECT 
-         s.ID AS SensorID, 
-         s.SName, 
-         s.SType, 
-         s.DataEdge,
-         s.APIKey,
-         s.RoomID,
-         r.Name AS RoomName,
-         s.HomeID,
-         h.HName AS HomeName,
-         h.UserID
-       FROM Sensors s
-       LEFT JOIN Room r ON s.RoomID = r.RoomID
-       LEFT JOIN Home h ON s.HomeID = h.ID
-       WHERE s.ID = ?`,
-      [sensorID]
-    );
+    const sensor = await Sensor.findById(sensorID);
 
-    if (sensorRows.length === 0) {
+    if (!sensor) {
       return res.status(404).json({ message: "Sensor not found" });
     }
 
-    res.status(200).json({ sensor: sensorRows[0] });
+    res.status(200).json({ sensor });
   } catch (error) {
     console.error('Error getting sensor info:', error.message);
     res.status(500).json({ message: "Internal server error" });
@@ -47,13 +31,7 @@ exports.getSensorsByUser = async (req, res) => {
         return res.status(400).json({ message: "Missing userID or homeID" });
       }
   
-      const [sensors] = await db.promise().query(
-        `SELECT s.ID as SensorID, s.SName, s.SType, s.RoomID, s.HomeID, s.APIKey
-         FROM Sensors s
-         JOIN Home h ON s.HomeID = h.ID
-         WHERE h.UserID = ? AND s.HomeID = ?`,
-        [userID, homeID]
-      );
+      const sensors = await Sensor.findByUser(userID, homeID);
   
       res.status(200).json({ sensors });
     } catch (error) {
@@ -77,26 +55,9 @@ exports.getLatestSensorData = async (req, res) => {
         return res.status(400).json({ message: "Invalid sensor IDs" });
       }
   
-      const [results] = await db.promise().query(`
-        SELECT s.ID AS sensorID, sd.STime AS time, sd.DataType, sd.NumData, sd.TextData
-        FROM Sensors s
-        LEFT JOIN (
-          SELECT SensorID, MAX(STime) AS MaxTime
-          FROM SensorData
-          WHERE SensorID IN (?)
-          GROUP BY SensorID
-        ) latest ON s.ID = latest.SensorID
-        LEFT JOIN SensorData sd ON s.ID = sd.SensorID AND latest.MaxTime = sd.STime
-        WHERE s.ID IN (?)
-      `, [ids, ids]);
+      const data = await Sensor.getLatestData(ids);
   
-      const formattedData = results.map(item => ({
-        sensorID: item.sensorID,
-        time: item.time,
-        value: item.DataType === "Number" ? item.NumData : item.TextData
-      }));
-  
-      return res.status(200).json(formattedData);
+      return res.status(200).json(data);
   
     } catch (error) {
       console.error(error);
@@ -104,41 +65,35 @@ exports.getLatestSensorData = async (req, res) => {
     }
   };
 
-  exports.addSensor = (req, res) => {
+exports.addSensor = async (req, res) => {
+  try {
     const { SName, SType, DataEdge, APIKey, HomeID, RoomID } = req.body;
-
-    const sql = `
-        INSERT INTO Sensors (SName, SType, DataEdge, APIKey, HomeID, RoomID)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    db.query(sql, [SName, SType, DataEdge, APIKey, HomeID, RoomID], (err, result) => {
-        if (err) return res.status(500).json({ message: "Thêm cảm biến thất bại", error: err });
-        res.status(201).json({ message: "Thêm cảm biến thành công", sensorID: result.insertId });
-    });
+    const sensorID = await Sensor.create({ SName, SType, DataEdge, APIKey, HomeID, RoomID });
+    res.status(201).json({ message: "Thêm cảm biến thành công", sensorID });
+  } catch (err) {
+    res.status(500).json({ message: "Thêm cảm biến thất bại", error: err });
+  }
 };
 
-exports.updateSensor = (req, res) => {
-  const id = req.params.id;
-  const { SName, SType, DataEdge, APIKey, HomeID, RoomID } = req.body;
-
-  const sql = `
-      UPDATE Sensors SET SName = ?, SType = ?, DataEdge = ?, APIKey = ?, HomeID = ?, RoomID = ?
-      WHERE ID = ?
-  `;
-  db.query(sql, [SName, SType, DataEdge, APIKey, HomeID, RoomID, id], (err, result) => {
-      if (err) return res.status(500).json({ message: "Cập nhật cảm biến thất bại", error: err });
-      res.status(200).json({ message: "Cập nhật cảm biến thành công" });
-  });
+exports.updateSensor = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updates = req.body;
+    await Sensor.update(id, updates);
+    res.status(200).json({ message: "Cập nhật cảm biến thành công" });
+  } catch (err) {
+    res.status(500).json({ message: "Cập nhật cảm biến thất bại", error: err });
+  }
 };
 
-exports.deleteSensor = (req, res) => {
-  const id = req.params.id;
-
-  const sql = "DELETE FROM Sensors WHERE ID = ?";
-  db.query(sql, [id], (err, result) => {
-      if (err) return res.status(500).json({ message: "Xóa cảm biến thất bại", error: err });
-      res.status(200).json({ message: "Xóa cảm biến thành công" });
-  });
+exports.deleteSensor = async (req, res) => {
+  try {
+    const id = req.params.id;
+    await Sensor.delete(id);
+    res.status(200).json({ message: "Xóa cảm biến thành công" });
+  } catch (err) {
+    res.status(500).json({ message: "Xóa cảm biến thất bại", error: err });
+  }
 };
 
 exports.getSensorDataHistory = async (req, res) => {
