@@ -21,7 +21,7 @@ exports.isAuth = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    const sql = "SELECT * FROM user WHERE ID = ?";
+    const sql = "SELECT * FROM User WHERE ID = ?";
     const results = await new Promise((resolve, reject) => {
       db.query(sql, [verified.id], (err, results) => {
         if (err) return reject(err);

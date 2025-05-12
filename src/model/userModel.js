@@ -26,7 +26,7 @@ class User {
 
     static async updatePassword(id, newPassword) {
         const hashed = bcrypt.hashSync(newPassword, SALT_ROUNDS);
-        await db.promise().query("UPDATE User SET Pass = ? WHERE ID = ?", [hashed, id]);
+        await db.promise().query("UPDATE user SET Pass = ? WHERE ID = ?", [hashed, id]);
     }
 
     async save() {

@@ -23,13 +23,13 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: "Invalid password"});
         }
 
-        sql = "SELECT * FROM user WHERE Username = ?";
+        sql = "SELECT * FROM User WHERE Username = ?";
         db.query(sql, username, function (err, results) {
             if (results.length > 0) {
                 return res.status(409).json("Username already exists");
             } else {
                 const hashedPassword = bcrypt.hashSync(password, SALT_ROUNDS);
-                sql = "INSERT INTO user (Username, Pass, Fullname, Dob, Email, Tel) VALUES (?, ?, ?, ?, ?, ?)";
+                sql = "INSERT INTO User (Username, Pass, Fullname, Dob, Email, Tel) VALUES (?, ?, ?, ?, ?, ?)";
                 db.query(sql, [username, hashedPassword, name, dob, email, tel], function (err, results1) {
                     if (err) {
                         console.error("Lỗi khi insert user:", err);
@@ -64,7 +64,7 @@ exports.login = async (req, res) => {
         return res.status(400).json({ message: "Missing username or password" });
       }
   
-      const [userResults] = await db.promise().query("SELECT * FROM user WHERE Username = ?", [username]);
+      const [userResults] = await db.promise().query("SELECT * FROM User WHERE Username = ?", [username]);
       if (userResults.length === 0) {
         return res.status(401).json({ message: "User does not exist" });
       }

@@ -30,6 +30,7 @@ CREATE TABLE Device (
     DType VARCHAR(50),
     DName NVARCHAR(50),
     APIKey VARCHAR(100),
+    Parameter VARCHAR(100),
     RoomID INT,
     HomeID INT,
     FOREIGN KEY (RoomID) REFERENCES Room(RoomID),
@@ -68,7 +69,7 @@ CREATE TABLE Notification (
     NType VARCHAR(50),
     isRead BOOLEAN,
     FOREIGN KEY (UserID) REFERENCES User(ID),
-    FOREIGN KEY (SensorID) REFERENCES Sensors(ID)
+    FOREIGN KEY (SensorID) REFERENCES Sensors(ID),
     FOREIGN KEY (DeviceID) REFERENCES Device(ID)
 );
 
