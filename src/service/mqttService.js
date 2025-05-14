@@ -193,9 +193,27 @@ function unsubscribeTopic(topic) {
   });
 }
 
-async function connectToMqtt(apiKey) {
+async function connectToMqtt(config = {}) {
+  const {
+    host = '81662e041e51410a8ea0b84d4ce532c1.s1.eu.hivemq.cloud',
+    port = 8883,
+    username = 'client_1',
+    password = 'cse_123_DADN',
+    protocol = 'mqtts'
+  } = config;
+
   if (client) client.end(true);
-  client = mqtt.connect(apiKey);
+
+  const options = {
+    host,
+    port,
+    username,
+    password,
+    protocol,
+    reconnectPeriod: 1000
+  };
+
+  client = mqtt.connect(options);
 
   client.on('connect', () => {
     console.log('Connected to MQTT broker');
@@ -209,6 +227,7 @@ async function connectToMqtt(apiKey) {
     handleIncomingMessage(topic, message);
   });
 }
+
 
 async function switchTopicsForUser(userId, homeId) {
   if (!client) {

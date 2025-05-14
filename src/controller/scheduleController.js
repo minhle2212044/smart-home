@@ -7,89 +7,100 @@ function formatDateToMySQL(date) {
 }
 
 exports.addSchedule = async (req, res) => {
-    try {
-      const { deviceID, hour, minute, status, para, userID, index } = req.body;
-  
-      if (!deviceID || hour === undefined || minute === undefined || status === undefined || para === undefined || !userID) {
-        return res.status(400).json({ message: 'Thiếu thông tin cần thiết' });
+  try {
+    const { deviceID, hour, minute, status, para, userID, index } = req.body;
+
+    if (!deviceID || hour === undefined || minute === undefined || status === undefined || para === undefined || !userID) {
+      return res.status(400).json({ message: 'Thiếu thông tin cần thiết' });
+    }
+
+    const existingSchedules = await scheduleModel.countSchedules();
+    if (existingSchedules.length >= 5) {
+      return res.status(400).json({ message: 'Chỉ được đặt tối đa 5 lịch trong toàn hệ thống' });
+    }
+
+    let freeIndex = index;
+
+    if (freeIndex === undefined) {
+      const usedIndexes = await scheduleModel.getUsedIndexes();
+      for (let i = 0; i < 5; i++) {
+        if (!usedIndexes.includes(i)) {
+          freeIndex = i;
+          break;
+        }
       }
-  
-      // Kiểm tra tổng số lượng lịch (tối đa 5)
-      const existingSchedules = await scheduleModel.countSchedules();
-      if (existingSchedules.length >= 5) {
-        return res.status(400).json({ message: 'Chỉ được đặt tối đa 5 lịch trong toàn hệ thống' });
-      }
-  
-      let freeIndex = index;
-  
-      // Nếu không truyền index, tự động tìm index trống từ 0–4 trong bảng ScheMode
+
       if (freeIndex === undefined) {
-        const usedIndexes = await scheduleModel.getUsedIndexes();
-        for (let i = 0; i < 5; i++) {
-          if (!usedIndexes.includes(i)) {
-            freeIndex = i;
-            break;
-          }
-        }
-  
-        if (freeIndex === undefined) {
-          return res.status(400).json({ message: 'Không tìm thấy index trống (0–4) để đặt lịch mới' });
-        }
+        return res.status(400).json({ message: 'Không tìm thấy index trống (0–4) để đặt lịch mới' });
       }
-  
-      // Lấy thông tin thiết bị
-      const deviceInfo = await scheduleModel.getDeviceInfo(deviceID);
-      if (!deviceInfo) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
-  
-      const { APIKey, DType } = deviceInfo;
-      const type = DType.toLowerCase();
-  
-      if (!type.includes('fan') && !type.includes('led')) {
-        return res.status(400).json({ message: `Thiết bị ${DType} không hỗ trợ đặt lịch` });
+    }
+
+    const deviceInfo = await scheduleModel.getDeviceInfo(deviceID);
+    if (!deviceInfo) return res.status(404).json({ message: 'Không tìm thấy thiết bị' });
+
+    const { APIKey, DType } = deviceInfo;
+    const type = DType.toLowerCase();
+
+    if (!type.includes('fan') && !type.includes('led')) {
+      return res.status(400).json({ message: `Thiết bị ${DType} không hỗ trợ đặt lịch` });
+    }
+
+    const client = mqttService.getClient();
+    if (!client || !client.connected) {
+      return res.status(500).json({ message: 'MQTT client chưa kết nối' });
+    }
+
+    const now = new Date();
+    const modeID = await scheduleModel.insertMode(now, userID);
+    await scheduleModel.linkDeviceToMode(modeID, deviceID);
+
+    const scheDescription = `Hẹn giờ ${status ? 'bật' : 'tắt'} ${DType} sau ${hour}:${minute < 10 ? '0' + minute : minute}, giá trị: ${para}`;
+    await scheduleModel.insertScheMode(modeID, scheDescription, freeIndex);
+
+    const startTime = new Date(now.getTime());
+    const endTime = new Date(startTime.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
+    await scheduleModel.insertScheDetail(startTime, endTime, modeID, deviceID);
+
+    let messageObj = {
+      action: 'add_schedule',
+      hour,
+      minute,
+      status: Boolean(status),
+      index: freeIndex
+    };
+
+    if (type.includes('fan')) {
+      messageObj.speed = para;
+    } else if (type.includes('led')) {
+      messageObj.brightness = para;
+    }
+
+    // Gửi lệnh schedule
+    client.publish(APIKey, JSON.stringify(messageObj), (err) => {
+      if (err) {
+        console.error('Lỗi publish MQTT:', err.message);
+        return res.status(500).json({ message: 'Gửi lệnh lịch thất bại' });
       }
-  
-      const client = mqttService.getClient();
-      if (!client || !client.connected) {
-        return res.status(500).json({ message: 'MQTT client chưa kết nối' });
-      }
-  
-      const now = new Date();
-  
-      const modeID = await scheduleModel.insertMode(now, userID);
-      await scheduleModel.linkDeviceToMode(modeID, deviceID);
-  
-      const scheDescription = `Hẹn giờ ${status ? 'bật' : 'tắt'} ${DType} sau ${hour}:${minute < 10 ? '0' + minute : minute}, giá trị: ${para}`;
-      await scheduleModel.insertScheMode(modeID, scheDescription, freeIndex);
-  
-      const startTime = new Date(now.getTime() + hour * 0 + minute * 0);
-      const endTime = new Date(startTime.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
-  
-      await scheduleModel.insertScheDetail(startTime, endTime, modeID, deviceID);
-  
-      let messageObj = {
-        action: 'add_schedule',
-        hour,
-        minute,
-        status: Boolean(status),
-        index: freeIndex
+
+      // Gửi thêm lệnh chuyển mode sang SCHEDULE
+      const modeMessage = {
+        action: 'set_mode',
+        mode: 1 // 1 là SCHEDULE
       };
-  
-      if (type.includes('fan')) {
-        messageObj.speed = para;
-      } else if (type.includes('led')) {
-        messageObj.brightness = para;
-      }
-  
-      client.publish(APIKey, JSON.stringify(messageObj), (err) => {
-        if (err) {
-          console.error('Lỗi publish MQTT:', err.message);
-          return res.status(500).json({ message: 'Gửi lệnh lịch thất bại' });
+
+      client.publish(APIKey, JSON.stringify(modeMessage), (err2) => {
+        if (err2) {
+          console.error('Lỗi gửi set_mode:', err2.message);
+          return res.status(500).json({ message: 'Gửi set_mode thất bại' });
         }
-  
+
         res.status(200).json({
           message: 'Đặt lịch thành công và đã lưu vào CSDL',
           index: freeIndex,
-          sent: messageObj,
+          sent: {
+            scheduleCommand: messageObj,
+            setModeCommand: modeMessage
+          },
           dbRecord: {
             modeID,
             scheDescription,
@@ -98,12 +109,13 @@ exports.addSchedule = async (req, res) => {
           }
         });
       });
-  
-    } catch (error) {
-      console.error('Lỗi addSchedule:', error.message);
-      res.status(500).json({ message: 'Lỗi server' });
-    }
-  };  
+    });
+
+  } catch (error) {
+    console.error('Lỗi addSchedule:', error.message);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
 
   exports.updateSchedule = async (req, res) => {
     try {

@@ -84,7 +84,7 @@ exports.login = async (req, res) => {
         const homeId = homes[0].ID;
         const apiKey = homes[0].APIKey;
 
-        await mqttService.connectToMqtt(apiKey);
+        await mqttService.connectToMqtt();
         await mqttService.switchTopicsForUser(userID, homeId);
         
         return res.status(200).json({
