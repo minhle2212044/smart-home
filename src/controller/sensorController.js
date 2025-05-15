@@ -55,7 +55,7 @@ exports.getLatestSensorData = async (req, res) => {
         return res.status(400).json({ message: "Invalid sensor IDs" });
       }
   
-      const data = await Sensor.getLatestData(ids);
+      const data = await Sensor.findLatestData(ids);
   
       return res.status(200).json(data);
   

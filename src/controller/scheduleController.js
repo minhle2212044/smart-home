@@ -49,7 +49,7 @@ exports.addSchedule = async (req, res) => {
     if (!client || !client.connected) {
       return res.status(500).json({ message: 'MQTT client chưa kết nối' });
     }
-
+    
     const now = new Date();
     const modeID = await scheduleModel.insertMode(now, userID);
     await scheduleModel.linkDeviceToMode(modeID, deviceID);
